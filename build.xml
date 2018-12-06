@@ -1,0 +1,81 @@
+<?xml version="1.0"?>
+<project name="louvre" default="sshexec" basedir=".">
+
+	<property file="hosts.properties"/>
+	<property name="rootdir" value="/data/dubbo"/>
+	<property name="appdir" value="${rootdir}/${app}"/>
+	<property name="jdk.version" value="1.8"/>
+	<property name="restart" value="${rootdir}/dev-env-deploy/shell/springboot.sh restart ${app}"/>
+
+
+	<condition property="isMacOrUnix">
+		<and>
+			<os family="mac"/>
+			<or>
+				<os family="unix"/>
+			</or>
+		</and>
+	</condition>
+	<condition property="isWindows">
+		<os family="windows"/>
+	</condition>
+
+	<target name="buildForUnix" if="isMacOrUnix">
+		<exec executable="/bin/zsh" failonerror="true">
+			<arg line="-c 'source ~/.bash_profile;mvn clean package -Dmaven.test.skip=true'"/>
+		</exec>
+	</target>
+
+	<target name="buildForWindows" if="isWindows">
+		<exec executable="cmd.exe" failonerror="true">
+			<arg line="/c mvn clean package -Dmaven.test.skip=true"/>
+		</exec>
+	</target>
+
+	<target name="rsyncForUnix" if="isMacOrUnix">
+		<exec executable="/bin/zsh" failonerror="true">
+			<arg line="-c 'rsync -rcvz --port=16000 --delete ${rsync.dir} ${user}@${host}::dubbo/${app}/${name}'"/>
+		</exec>
+	</target>
+
+	<target name="rsyncForWindows" if="isWindows">
+		<exec executable="cmd.exe" failonerror="true">
+			<arg line="/c rsync -rcvz --port=16000 --delete ${rsync.dir} ${user}@${host}::dubbo/${app}/${name}"/>
+		</exec>
+	</target>
+
+	<target name="build">
+		<echo message="build project begin..."/>
+		<antcall target="buildForUnix"/>
+		<antcall target="buildForWindows"/>
+		<echo message="build project end..."/>
+	</target>
+
+	<target name="copy" depends="build">
+		<echo message="copy begin ....."/>
+		<copy todir="target/${app}/lib" overwrite="yes">
+			<fileset dir="target/lib"/>
+		</copy>
+		<copy todir="target/${app}" overwrite="yes">
+			<file basedir="target" name="${app}.jar"/>
+		</copy>
+		<echo message="copy end ....."/>
+	</target>
+
+
+	<target name="rsync" depends="copy">
+		<echo message="rsync files begin..."/>
+		<antcall target="rsyncForUnix"/>
+		<antcall target="rsyncForWindows"/>
+		<echo message="rsync files end..."/>
+	</target>
+
+	<target name="sshexec" depends="rsync">
+		<echo message="sshexec begin..."/>
+		<sshexec host="${host}" username="${user}" password="${pwd}" port="${port}"
+				 trust="true" command="mkdir -p ${appdir};cd ${appdir}; rm -f ${app}; ln -s ${name} ${app}; ${restart}"
+				 failonerror="true"/>
+		<echo message="sshexec end..."/>
+	</target>
+
+</project>
